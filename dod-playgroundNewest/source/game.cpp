@@ -39,6 +39,11 @@ struct WorldBoundsComponent
     float xMin, xMax, yMin, yMax;
 };
 
+struct PreviousPositionComponent
+{
+    float xPrev,yPrev;
+};
+
 
 // Move around with constant velocity. When reached world bounds, reflect back from them.
 struct MoveComponent
@@ -86,6 +91,7 @@ struct Entities
     std::vector<PositionComponent> m_Positions;
     std::vector<SpriteComponent> m_Sprites;
     std::vector<WorldBoundsComponent> m_WorldBounds;
+    std::vector<PreviousPositionComponent> m_prevPos;
     std::vector<MoveComponent> m_Moves;
     // bit flags for every component, indicating whether this object "has it"
     std::vector<int> m_Flags;
@@ -96,6 +102,7 @@ struct Entities
         m_Positions.reserve(n);
         m_Sprites.reserve(n);
         m_WorldBounds.reserve(n);
+        m_prevPos.reserve(n);
         m_Moves.reserve(n);
         m_Flags.reserve(n);
     }
@@ -107,6 +114,7 @@ struct Entities
         m_Positions.push_back(PositionComponent());
         m_Sprites.push_back(SpriteComponent());
         m_WorldBounds.push_back(WorldBoundsComponent());
+        m_prevPos.push_back(PreviousPositionComponent());
         m_Moves.push_back(MoveComponent());
         m_Flags.push_back(0);
         return id;
@@ -146,10 +154,17 @@ struct MoveSystem
         {
             PositionComponent& pos = s_Objects.m_Positions[io];
             MoveComponent& move = s_Objects.m_Moves[io];
-            
+            PreviousPositionComponent& prevPos = s_Objects.m_prevPos[io];
+
+
+            //set previous position for AABB Collsiion
+            prevPos.xPrev = pos.x;
+            prevPos.yPrev = pos.y;
+
             // update position based on movement velocity & delta time
             pos.x += move.velx * deltaTime;
             pos.y += move.vely * deltaTime;
+            
             
             // check against world bounds; put back onto bounds and mirror the velocity component to "bounce" back
             if (pos.x < bounds.xMin)
@@ -232,7 +247,12 @@ struct AvoidanceSystem
         {
             EntityID go = objectList[io];
             const PositionComponent& myposition = s_Objects.m_Positions[go];
+            const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
 
+            float minX = (myposition.x > prevPosition.xPrev) ? prevPosition.xPrev : myposition.x;
+            float maxX = (myposition.x > prevPosition.xPrev) ? myposition.x : prevPosition.xPrev;
+            float minY = (myposition.y > prevPosition.yPrev) ? prevPosition.yPrev : myposition.y;
+            float maxY = (myposition.y > prevPosition.yPrev) ? myposition.y : prevPosition.yPrev;
             // check each thing in avoid list
             for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
             {
