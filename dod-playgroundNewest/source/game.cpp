@@ -4,7 +4,7 @@
 #include <math.h>
 #include <assert.h>
 
-const int kObjectCount = 1000;
+const int kObjectCount = 100;
 const int kAvoidCount = 20;
 
 
@@ -250,18 +250,33 @@ struct AvoidanceSystem
             const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
 
             float minX = (myposition.x > prevPosition.xPrev) ? prevPosition.xPrev : myposition.x;
+            minX -= 0.2f;
             float maxX = (myposition.x > prevPosition.xPrev) ? myposition.x : prevPosition.xPrev;
+            maxX += 0.2f;
             float minY = (myposition.y > prevPosition.yPrev) ? prevPosition.yPrev : myposition.y;
+            minY -= 0.2f;
             float maxY = (myposition.y > prevPosition.yPrev) ? myposition.y : prevPosition.yPrev;
+            maxY += 0.2f;
             // check each thing in avoid list
             for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
             {
                 float avDistance = avoidDistanceList[ia];
                 EntityID avoid = avoidList[ia];
                 const PositionComponent& avoidposition = s_Objects.m_Positions[avoid];
-                
+                const PreviousPositionComponent& avoidPrevPosition = s_Objects.m_prevPos[avoid];
+
+                float avoidMinX = (avoidposition.x > avoidPrevPosition.xPrev) ? avoidPrevPosition.xPrev : avoidposition.x;
+                avoidMinX -= 0.4f;
+                float avoidMaxX = (avoidposition.x > avoidPrevPosition.xPrev) ? avoidposition.x : avoidPrevPosition.xPrev;
+                avoidMaxX += 0.4f;
+                float avoidMinY = (avoidposition.y > avoidPrevPosition.yPrev) ? avoidPrevPosition.yPrev : avoidposition.y;
+                avoidMinY -= 0.4f;
+                float avoidMaxY = (avoidposition.y > avoidPrevPosition.yPrev) ? avoidposition.y : avoidPrevPosition.yPrev;
+                avoidMaxY += 0.4f;
+
                 // is our position closer to "thing to avoid" position than the avoid distance?
-                if (DistanceSq(myposition, avoidposition) < avDistance)
+                //if (DistanceSq(myposition, avoidposition) < avDistance)
+                if(avoidMaxX > minX && avoidMinX < maxX && avoidMaxY > minY && avoidMinY < maxY)
                 {
                     ResolveCollision(go, deltaTime);
                     
