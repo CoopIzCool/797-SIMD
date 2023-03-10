@@ -4,7 +4,7 @@
 #include <math.h>
 #include <assert.h>
 
-const int kObjectCount = 100;
+const int kObjectCount = 100000;
 const int kAvoidCount = 20;
 
 
@@ -225,6 +225,53 @@ struct AvoidanceSystem
         float dy = a.y - b.y;
         return dx * dx + dy * dy;
     }
+
+    void FixSpawnColliding(WorldBoundsComponent bounds)
+    {
+        for (size_t io = 0, no = objectList.size(); io != no; ++io)
+        {
+            EntityID go = objectList[io];
+            const PositionComponent& myposition = s_Objects.m_Positions[go];
+            const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
+
+            float minX = myposition.x - 0.25;
+            float maxX = myposition.x + 0.25;
+            float minY = myposition.y - 0.25;
+            float maxY = myposition.y + 0.25;
+
+            bool collidingWithObstacle = true;
+            while (collidingWithObstacle)
+            {
+                collidingWithObstacle = false;
+                // check each thing in avoid list
+                for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
+                {
+                    float avDistance = avoidDistanceList[ia];
+                    EntityID avoid = avoidList[ia];
+                    const PositionComponent& avoidposition = s_Objects.m_Positions[avoid];
+
+                    float avoidMinX = avoidposition.x - 1.0;
+                    float avoidMaxX = avoidposition.x + 1.0;
+                    float avoidMinY = avoidposition.y - 1.0;
+                    float avoidMaxY = avoidposition.y + 1.0;
+
+                    // is our position closer to "thing to avoid" position than the avoid distance?
+                    //if (DistanceSq(myposition, avoidposition) < avDistance)
+                    if (avoidMaxX > minX&& avoidMinX < maxX && avoidMaxY > minY&& avoidMinY < maxY)
+                    {
+                        s_Objects.m_Positions[go].x = RandomFloat(bounds.xMin, bounds.xMax);
+                        s_Objects.m_Positions[go].y = RandomFloat(bounds.yMin, bounds.yMax);
+                        minX = myposition.x - 0.25;
+                        maxX = myposition.x + 0.25;
+                        minY = myposition.y - 0.25;
+                        maxY = myposition.y + 0.25;
+                        collidingWithObstacle = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
     
     void ResolveCollision(EntityID id, float deltaTime)
     {
@@ -250,13 +297,13 @@ struct AvoidanceSystem
             const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
 
             float minX = (myposition.x > prevPosition.xPrev) ? prevPosition.xPrev : myposition.x;
-            minX -= 0.2f;
+            minX -= 0.25f;
             float maxX = (myposition.x > prevPosition.xPrev) ? myposition.x : prevPosition.xPrev;
-            maxX += 0.2f;
+            maxX += 0.25f;
             float minY = (myposition.y > prevPosition.yPrev) ? prevPosition.yPrev : myposition.y;
-            minY -= 0.2f;
+            minY -= 0.25f;
             float maxY = (myposition.y > prevPosition.yPrev) ? myposition.y : prevPosition.yPrev;
-            maxY += 0.2f;
+            maxY += 0.25f;
             // check each thing in avoid list
             for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
             {
@@ -266,13 +313,13 @@ struct AvoidanceSystem
                 const PreviousPositionComponent& avoidPrevPosition = s_Objects.m_prevPos[avoid];
 
                 float avoidMinX = (avoidposition.x > avoidPrevPosition.xPrev) ? avoidPrevPosition.xPrev : avoidposition.x;
-                avoidMinX -= 0.4f;
+                avoidMinX -= 0.55f;
                 float avoidMaxX = (avoidposition.x > avoidPrevPosition.xPrev) ? avoidposition.x : avoidPrevPosition.xPrev;
-                avoidMaxX += 0.4f;
+                avoidMaxX += 0.55f;
                 float avoidMinY = (avoidposition.y > avoidPrevPosition.yPrev) ? avoidPrevPosition.yPrev : avoidposition.y;
-                avoidMinY -= 0.4f;
+                avoidMinY -= 0.55f;
                 float avoidMaxY = (avoidposition.y > avoidPrevPosition.yPrev) ? avoidposition.y : avoidPrevPosition.yPrev;
-                avoidMaxY += 0.4f;
+                avoidMaxY += 0.55f;
 
                 // is our position closer to "thing to avoid" position than the avoid distance?
                 //if (DistanceSq(myposition, avoidposition) < avDistance)
@@ -290,6 +337,8 @@ struct AvoidanceSystem
             }
         }
     }
+
+    
 };
 
 static AvoidanceSystem s_AvoidanceSystem;
@@ -369,6 +418,9 @@ extern "C" void game_initialize(void)
         // add to avoidance this as "Avoid This" object
         s_AvoidanceSystem.AddAvoidThisObjectToSystem(go, 1.3f);
     }
+
+    //Take care of any objects that spawned on top of avoids
+    s_AvoidanceSystem.FixSpawnColliding(bounds);
 }
 
 
