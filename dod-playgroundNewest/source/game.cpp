@@ -6,7 +6,7 @@
 
 const int kObjectCount = 100000;
 const int kAvoidCount = 20;
-
+const int kTotalObjectCount = kObjectCount + kAvoidCount; 
 
 
 static float RandomFloat01() { return (float)rand() / (float)RAND_MAX; }
@@ -42,6 +42,16 @@ struct WorldBoundsComponent
 struct PreviousPositionComponent
 {
     float xPrev,yPrev;
+};
+
+struct PositionHandlingComponent
+{
+    float posX[kTotalObjectCount];
+    float posY[kTotalObjectCount];
+    float prevPosX[kTotalObjectCount];
+    float prevPosY[kTotalObjectCount];
+    float velX[kTotalObjectCount];
+    float velY[kTotalObjectCount];
 };
 
 
@@ -297,7 +307,7 @@ struct AvoidanceSystem
             const PositionComponent& myposition = s_Objects.m_Positions[go];
             const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
 
-            float minX = __min(myposition.x,prevPosition.xPrev);
+            float minX = (myposition.x > prevPosition.xPrev) ? prevPosition.xPrev : myposition.x;
             minX -= 0.25f;
             float maxX = (myposition.x > prevPosition.xPrev) ? myposition.x : prevPosition.xPrev;
             maxX += 0.25f;
