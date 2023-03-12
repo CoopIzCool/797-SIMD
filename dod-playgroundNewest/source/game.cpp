@@ -7,8 +7,8 @@
 #include <emmintrin.h>
 #include <immintrin.h>
 
-const int kObjectCount = 100000;
-const int kAvoidCount = 32;
+const int kObjectCount = 1000;
+const int kAvoidCount = 16;
 const int kTotalObjectCount = kObjectCount + kAvoidCount; 
 
 
@@ -23,7 +23,9 @@ static float RandomFloat(float from, float to) { return RandomFloat01() * (to - 
 // 2D position: just x,y coordinates
 struct PositionComponent
 {
-    float x, y;
+    alignas(16) float posX[kTotalObjectCount];
+    alignas(16) float posY[kTotalObjectCount];
+
 };
 
 
@@ -44,7 +46,8 @@ struct WorldBoundsComponent
 
 struct PreviousPositionComponent
 {
-    float xPrev,yPrev;
+    alignas(16) float prevX[kTotalObjectCount];
+    alignas(16) float prevY[kTotalObjectCount];
 };
 
 struct AABBComponent
@@ -100,10 +103,12 @@ struct Entities
     // names of each object
     std::vector<std::string> m_Names;
     // data for all components
-    std::vector<PositionComponent> m_Positions;
+    //std::vector<PositionComponent> m_Positions;
+    PositionComponent m_Positions;
     std::vector<SpriteComponent> m_Sprites;
     std::vector<WorldBoundsComponent> m_WorldBounds;
-    std::vector<PreviousPositionComponent> m_prevPos;
+    //std::vector<PreviousPositionComponent> m_prevPos;
+    PreviousPositionComponent  m_prevPos;
     std::vector<MoveComponent> m_Moves;
     AABBComponent m_AABB;
     // bit flags for every component, indicating whether this object "has it"
@@ -112,10 +117,8 @@ struct Entities
     void reserve(size_t n)
     {
         m_Names.reserve(n);
-        m_Positions.reserve(n);
         m_Sprites.reserve(n);
         m_WorldBounds.reserve(n);
-        m_prevPos.reserve(n);
         m_Moves.reserve(n);
         m_Flags.reserve(n);
     }
@@ -124,10 +127,8 @@ struct Entities
     {
         EntityID id = m_Names.size();
         m_Names.emplace_back(name);
-        m_Positions.push_back(PositionComponent());
         m_Sprites.push_back(SpriteComponent());
         m_WorldBounds.push_back(WorldBoundsComponent());
-        m_prevPos.push_back(PreviousPositionComponent());
         m_Moves.push_back(MoveComponent());
         m_Flags.push_back(0);
         return id;
@@ -161,44 +162,45 @@ struct MoveSystem
     void UpdateSystem(double time, float deltaTime)
     {
         const WorldBoundsComponent& bounds = s_Objects.m_WorldBounds[boundsID];
-
+        PositionComponent& pos = s_Objects.m_Positions;
+        PreviousPositionComponent& prevPos = s_Objects.m_prevPos;
         // go through all the objects
         for (size_t io = 0, no = entities.size(); io != no; ++io)
         {
-            PositionComponent& pos = s_Objects.m_Positions[io];
+            
             MoveComponent& move = s_Objects.m_Moves[io];
-            PreviousPositionComponent& prevPos = s_Objects.m_prevPos[io];
+            
 
 
             //set previous position for AABB Collsiion
-            prevPos.xPrev = pos.x;
-            prevPos.yPrev = pos.y;
+            prevPos.prevX[io] = pos.posX[io];
+            prevPos.prevY[io] = pos.posY[io];
 
             // update position based on movement velocity & delta time
-            pos.x += move.velx * deltaTime;
-            pos.y += move.vely * deltaTime;
+            pos.posX[io] += move.velx * deltaTime;
+            pos.posY[io] += move.vely * deltaTime;
             
             
             // check against world bounds; put back onto bounds and mirror the velocity component to "bounce" back
-            if (pos.x < bounds.xMin)
+            if (pos.posX[io] < bounds.xMin)
             {
                 move.velx = -move.velx;
-                pos.x = bounds.xMin;
+                pos.posX[io] = bounds.xMin;
             }
-            if (pos.x > bounds.xMax)
+            if (pos.posX[io] > bounds.xMax)
             {
                 move.velx = -move.velx;
-                pos.x = bounds.xMax;
+                pos.posX[io] = bounds.xMax;
             }
-            if (pos.y < bounds.yMin)
+            if (pos.posY[io] < bounds.yMin)
             {
                 move.vely = -move.vely;
-                pos.y = bounds.yMin;
+                pos.posY[io] = bounds.yMin;
             }
-            if (pos.y > bounds.yMax)
+            if (pos.posY[io] > bounds.yMax)
             {
                 move.vely = -move.vely;
-                pos.y = bounds.yMax;
+                pos.posY[io] = bounds.yMax;
             }
         }
     }
@@ -221,6 +223,10 @@ struct AvoidanceSystem
     // objects that avoid: their IDs
     std::vector<EntityID> objectList;
 
+    //position component references
+    PositionComponent& pos = s_Objects.m_Positions;
+    PreviousPositionComponent& prevPosition = s_Objects.m_prevPos;
+
     void AddAvoidThisObjectToSystem(EntityID id, float distance)
     {
         avoidList.emplace_back(id);
@@ -231,33 +237,21 @@ struct AvoidanceSystem
     {
         objectList.emplace_back(id);
     }
-    
-    static float DistanceSq(const PositionComponent& a, const PositionComponent& b)
-    {
-        float dx = a.x - b.x;
-        float dy = a.y - b.y;
-        return dx * dx + dy * dy;
-    }
+
 
     void FixSpawnColliding(WorldBoundsComponent bounds)
     {
-        /*
+        
         for (size_t io = 0, no = objectList.size(); io != no; ++io)
         {
             EntityID go = objectList[io];
-            const PositionComponent& myposition = s_Objects.m_Positions[go];
-            const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
 
-            //s_Objects.m_AABB.minX[go] = myposition.x - 0.25;
-            //s_Objects.m_AABB.maxX[go] = myposition.x + 0.25;
-            //s_Objects.m_AABB.minY[go] = myposition.y - 0.25;
-            //s_Objects.m_AABB.maxY[go] = myposition.y + 0.25;
-            //float minX = myposition.x - 0.25;
-            //float maxX = myposition.x + 0.25;
-            //float minY = myposition.y - 0.25;
-            //float maxY = myposition.y + 0.25;
 
-            //s_Objects.
+            float minX = pos.posX[go] - 0.25;
+            float maxX = pos.posX[go] + 0.25;
+            float minY = pos.posY[go] - 0.25;
+            float maxY = pos.posY[go] + 0.25;
+
 
             bool collidingWithObstacle = true;
             while (collidingWithObstacle)
@@ -268,31 +262,31 @@ struct AvoidanceSystem
                 {
                     float avDistance = avoidDistanceList[ia];
                     EntityID avoid = avoidList[ia];
-                    const PositionComponent& avoidposition = s_Objects.m_Positions[avoid];
 
-                    float avoidMinX = avoidposition.x - 1.0;
-                    float avoidMaxX = avoidposition.x + 1.0;
-                    float avoidMinY = avoidposition.y - 1.0;
-                    float avoidMaxY = avoidposition.y + 1.0;
+
+                    float avoidMinX = pos.posX[avoid] - 1.0;
+                    float avoidMaxX = pos.posX[avoid] + 1.0;
+                    float avoidMinY = pos.posX[avoid] - 1.0;
+                    float avoidMaxY = pos.posX[avoid] + 1.0;
 
                     // is our position closer to "thing to avoid" position than the avoid distance?
                     //if (DistanceSq(myposition, avoidposition) < avDistance)
                     
                     if (avoidMaxX > minX&& avoidMinX < maxX && avoidMaxY > minY&& avoidMinY < maxY)
                     {
-                        s_Objects.m_Positions[go].x = RandomFloat(bounds.xMin, bounds.xMax);
-                        s_Objects.m_Positions[go].y = RandomFloat(bounds.yMin, bounds.yMax);
-                        minX = myposition.x - 0.25;
-                        maxX = myposition.x + 0.25;
-                        minY = myposition.y - 0.25;
-                        maxY = myposition.y + 0.25;
+                        pos.posX[go] = RandomFloat(bounds.xMin, bounds.xMax);
+                        pos.posY[go] = RandomFloat(bounds.yMin, bounds.yMax);
+                        minX = pos.posX[go] - 0.25;
+                        maxX = pos.posX[go] + 0.25;
+                        minY = pos.posY[go] - 0.25;
+                        maxY = pos.posY[go] + 0.25;
                         collidingWithObstacle = true;
                         break;
                     }
                 }
             }
         }
-        */
+        
 
         //depreciated SIMD attempt for now
         /*
@@ -349,7 +343,7 @@ struct AvoidanceSystem
     
     void ResolveCollision(EntityID id, float deltaTime,EntityID avoidID)
     {
-        PositionComponent& pos = s_Objects.m_Positions[id];
+        
         MoveComponent& move = s_Objects.m_Moves[id];
         MoveComponent& avoidMove = s_Objects.m_Moves[avoidID];
         // flip velocity
@@ -357,49 +351,47 @@ struct AvoidanceSystem
         move.vely = -move.vely;
         
         // move us out of collision, by moving just a tiny bit more than we'd normally move during a frame
-        pos.x += (move.velx * deltaTime * 1.6f) + (avoidMove.velx * deltaTime);
-        pos.y += (move.vely * deltaTime * 1.6f) + (avoidMove.vely * deltaTime);
+        pos.posX[id] += (move.velx * deltaTime * 1.6f) + (avoidMove.velx * deltaTime);
+        pos.posY[id] += (move.vely * deltaTime * 1.6f) + (avoidMove.vely * deltaTime);
     }
     
     void UpdateSystem(double time, float deltaTime)
     {
         //old code
-        /*
+        
         // go through all the objects
         for (size_t io = 0, no = objectList.size(); io != no; ++io)
         {
             EntityID go = objectList[io];
-            const PositionComponent& myposition = s_Objects.m_Positions[go];
-            const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
+            
 
-            float minX = (myposition.x > prevPosition.xPrev) ? prevPosition.xPrev : myposition.x;
+            float minX = (pos.posX[go] > prevPosition.prevX[go]) ? prevPosition.prevX[go] : pos.posX[go];
             minX -= 0.25f;
-            float maxX = (myposition.x > prevPosition.xPrev) ? myposition.x : prevPosition.xPrev;
+            float maxX = (pos.posX[go] > prevPosition.prevX[go]) ? pos.posX[go] : prevPosition.prevX[go];
             maxX += 0.25f;
-            float minY = (myposition.y > prevPosition.yPrev) ? prevPosition.yPrev : myposition.y;
+            float minY = (pos.posY[go] > prevPosition.prevY[go]) ? prevPosition.prevY[go] : pos.posY[go];
             minY -= 0.25f;
-            float maxY = (myposition.y > prevPosition.yPrev) ? myposition.y : prevPosition.yPrev;
+            float maxY = (pos.posY[go] > prevPosition.prevY[go]) ? pos.posY[go] : prevPosition.prevY[go];
             maxY += 0.25f;
             // check each thing in avoid list
             for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
             {
                 float avDistance = avoidDistanceList[ia];
                 EntityID avoid = avoidList[ia];
-                const PositionComponent& avoidposition = s_Objects.m_Positions[avoid];
-                const PreviousPositionComponent& avoidPrevPosition = s_Objects.m_prevPos[avoid];
 
-                float avoidMinX = (avoidposition.x > avoidPrevPosition.xPrev) ? avoidPrevPosition.xPrev : avoidposition.x;
+
+                float avoidMinX = (pos.posX[avoid] > prevPosition.prevX[avoid]) ? prevPosition.prevX[avoid] : pos.posX[avoid];
                 avoidMinX -= 0.55f;
-                float avoidMaxX = (avoidposition.x > avoidPrevPosition.xPrev) ? avoidposition.x : avoidPrevPosition.xPrev;
+                float avoidMaxX = (pos.posX[avoid] > prevPosition.prevX[avoid]) ? pos.posX[avoid] : prevPosition.prevX[avoid];
                 avoidMaxX += 0.55f;
-                float avoidMinY = (avoidposition.y > avoidPrevPosition.yPrev) ? avoidPrevPosition.yPrev : avoidposition.y;
+                float avoidMinY = (pos.posY[avoid] > prevPosition.prevY[avoid]) ? prevPosition.prevY[avoid] : pos.posY[avoid];
                 avoidMinY -= 0.55f;
-                float avoidMaxY = (avoidposition.y > avoidPrevPosition.yPrev) ? avoidposition.y : avoidPrevPosition.yPrev;
+                float avoidMaxY = (pos.posY[avoid] > prevPosition.prevY[avoid]) ? pos.posY[avoid] : prevPosition.prevY[avoid];
                 avoidMaxY += 0.55f;
 
                 // is our position closer to "thing to avoid" position than the avoid distance?
                 //if (DistanceSq(myposition, avoidposition) < avDistance)
-                if (avoidPrevPosition.xPrev != 0 && avoidPrevPosition.yPrev != 0)
+                if (prevPosition.prevX[avoid] != 0 && prevPosition.prevY[avoid] != 0)
                 {
                     if (avoidMaxX > minX&& avoidMinX < maxX && avoidMaxY > minY&& avoidMinY < maxY)
                     {
@@ -413,10 +405,15 @@ struct AvoidanceSystem
                         mySprite.colorB = avoidSprite.colorB;
                     }
                 }
+                else
+                {
+                    int test;
+                }
             }
             
-        }*/
+        }
 
+        /*
         for (size_t io = 0, no = objectList.size(); io < no; io += 16)
         {
             //__m512 currentX = _mm512_load_ps()
@@ -425,6 +422,7 @@ struct AvoidanceSystem
         for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
         {
         }
+        */
     }
 
     
@@ -460,8 +458,8 @@ extern "C" void game_initialize(void)
         EntityID go = s_Objects.AddEntity("object");
 
         // position it within world bounds
-        s_Objects.m_Positions[go].x = RandomFloat(bounds.xMin, bounds.xMax);
-        s_Objects.m_Positions[go].y = RandomFloat(bounds.yMin, bounds.yMax);
+        s_Objects.m_Positions.posX[go] = RandomFloat(bounds.xMin, bounds.xMax);
+        s_Objects.m_Positions.posY[go] = RandomFloat(bounds.yMin, bounds.yMax);
         s_Objects.m_Flags[go] |= Entities::kFlagPosition;
 
         
@@ -488,8 +486,8 @@ extern "C" void game_initialize(void)
         EntityID go = s_Objects.AddEntity("toavoid");
         
         // position it in small area near center of world bounds
-        s_Objects.m_Positions[go].x = RandomFloat(bounds.xMin, bounds.xMax) * 0.2f;
-        s_Objects.m_Positions[go].y = RandomFloat(bounds.yMin, bounds.yMax) * 0.2f;
+        s_Objects.m_Positions.posX[go] = RandomFloat(bounds.xMin, bounds.xMax) * 0.2f;
+        s_Objects.m_Positions.posY[go] = RandomFloat(bounds.yMin, bounds.yMax) * 0.2f;
         s_Objects.m_Flags[go] |= Entities::kFlagPosition;
 
         // setup a sprite for it (6th one), and a random color
@@ -538,9 +536,9 @@ extern "C" int game_update(sprite_data_t* data, double time, float deltaTime)
         if ((s_Objects.m_Flags[i] & Entities::kFlagPosition) && (s_Objects.m_Flags[i] & Entities::kFlagSprite))
         {
             sprite_data_t& spr = data[objectCount++];
-            const PositionComponent& pos = s_Objects.m_Positions[i];
-            spr.posX = pos.x * globalScale;
-            spr.posY = pos.y * globalScale;
+            const PositionComponent& pos = s_Objects.m_Positions;
+            spr.posX = pos.posX[i] * globalScale;
+            spr.posY = pos.posY[i] * globalScale;
             const SpriteComponent& sprite = s_Objects.m_Sprites[i];
             spr.scale = sprite.scale * globalScale;
             spr.colR = sprite.colorR;
