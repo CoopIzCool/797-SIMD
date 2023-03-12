@@ -3,9 +3,12 @@
 #include <string>
 #include <math.h>
 #include <assert.h>
+#include <cstdint>
+#include <emmintrin.h>
+#include <immintrin.h>
 
 const int kObjectCount = 100000;
-const int kAvoidCount = 20;
+const int kAvoidCount = 32;
 const int kTotalObjectCount = kObjectCount + kAvoidCount; 
 
 
@@ -44,14 +47,13 @@ struct PreviousPositionComponent
     float xPrev,yPrev;
 };
 
-struct PositionHandlingComponent
+struct AABBComponent
 {
-    float posX[kTotalObjectCount];
-    float posY[kTotalObjectCount];
-    float prevPosX[kTotalObjectCount];
-    float prevPosY[kTotalObjectCount];
-    float velX[kTotalObjectCount];
-    float velY[kTotalObjectCount];
+    alignas(16) float minX[kTotalObjectCount];
+    alignas(16) float minY[kTotalObjectCount];
+    alignas(16) float maxX[kTotalObjectCount];
+    alignas(16) float maxY[kTotalObjectCount];
+
 };
 
 
@@ -103,6 +105,7 @@ struct Entities
     std::vector<WorldBoundsComponent> m_WorldBounds;
     std::vector<PreviousPositionComponent> m_prevPos;
     std::vector<MoveComponent> m_Moves;
+    AABBComponent m_AABB;
     // bit flags for every component, indicating whether this object "has it"
     std::vector<int> m_Flags;
     
@@ -238,16 +241,23 @@ struct AvoidanceSystem
 
     void FixSpawnColliding(WorldBoundsComponent bounds)
     {
+        /*
         for (size_t io = 0, no = objectList.size(); io != no; ++io)
         {
             EntityID go = objectList[io];
             const PositionComponent& myposition = s_Objects.m_Positions[go];
             const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
 
-            float minX = myposition.x - 0.25;
-            float maxX = myposition.x + 0.25;
-            float minY = myposition.y - 0.25;
-            float maxY = myposition.y + 0.25;
+            //s_Objects.m_AABB.minX[go] = myposition.x - 0.25;
+            //s_Objects.m_AABB.maxX[go] = myposition.x + 0.25;
+            //s_Objects.m_AABB.minY[go] = myposition.y - 0.25;
+            //s_Objects.m_AABB.maxY[go] = myposition.y + 0.25;
+            //float minX = myposition.x - 0.25;
+            //float maxX = myposition.x + 0.25;
+            //float minY = myposition.y - 0.25;
+            //float maxY = myposition.y + 0.25;
+
+            //s_Objects.
 
             bool collidingWithObstacle = true;
             while (collidingWithObstacle)
@@ -282,6 +292,59 @@ struct AvoidanceSystem
                 }
             }
         }
+        */
+
+        //depreciated SIMD attempt for now
+        /*
+        for (size_t io = 0, no = objectList.size(); io != no; ++io)
+        {
+            EntityID go = objectList[io];
+            const PositionComponent& myposition = s_Objects.m_Positions[go];
+            s_Objects.m_AABB.minX[go] = myposition.x - 0.25;
+            s_Objects.m_AABB.maxX[go] = myposition.x + 0.25;
+            s_Objects.m_AABB.minY[go] = myposition.y - 0.25;
+            s_Objects.m_AABB.maxY[go] = myposition.y + 0.25;
+        }
+        for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
+        {
+            EntityID avoid = avoidList[ia];
+            const PositionComponent& avoidposition = s_Objects.m_Positions[avoid];
+
+            s_Objects.m_AABB.minX[avoid] = avoidposition.x - 1.0;
+            s_Objects.m_AABB.maxX[avoid] = avoidposition.x + 1.0;
+            s_Objects.m_AABB.minY[avoid] = avoidposition.y - 1.0;
+            s_Objects.m_AABB.maxY[avoid] = avoidposition.y + 1.0;
+        }
+        */
+
+        /*
+        __m512 collisionResults = _mm512_set1_ps(1);
+        __m512 minXBounds = _mm512_load_ps(s_Objects.m_AABB.minX );
+        __m512 maxXBounds = _mm512_load_ps(s_Objects.m_AABB.maxX );
+        __m512 minYBounds = _mm512_load_ps(s_Objects.m_AABB.minY );
+        __m512 maxYBounds = _mm512_load_ps(s_Objects.m_AABB.maxY );
+        __m512 avoidMinXBounds = _mm512_load_ps(s_Objects.m_AABB.minX);
+        __m512 avoidMaxXBounds = _mm512_load_ps(s_Objects.m_AABB.maxX);
+        __m512 avoidMinYBounds = _mm512_load_ps(s_Objects.m_AABB.minY);
+        __m512 avoidMaxYBounds = _mm512_load_ps(s_Objects.m_AABB.maxY);
+        for (size_t io = 0, no = objectList.size(); io < no; io +=16)
+        {
+            minXBounds = _mm512_load_ps(s_Objects.m_AABB.minX + io);
+            maxXBounds = _mm512_load_ps(s_Objects.m_AABB.maxX + io);
+            minYBounds = _mm512_load_ps(s_Objects.m_AABB.minY + io);
+            maxYBounds = _mm512_load_ps(s_Objects.m_AABB.maxY + io);
+            for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
+            {
+                EntityID avoid = avoidList[ia];
+                avoidMinXBounds = _mm512_load_ps(s_Objects.m_AABB.minX + avoid);
+                avoidMaxXBounds = _mm512_load_ps(s_Objects.m_AABB.maxX + avoid);
+                avoidMinYBounds = _mm512_load_ps(s_Objects.m_AABB.minY + avoid);
+                avoidMaxYBounds = _mm512_load_ps(s_Objects.m_AABB.maxY + avoid);
+
+                //__m512i minMask = _mm512_cmp_ps_mask(minXBounds,avoidMinXBounds)
+            }
+        }
+        */
     }
     
     void ResolveCollision(EntityID id, float deltaTime,EntityID avoidID)
@@ -300,6 +363,8 @@ struct AvoidanceSystem
     
     void UpdateSystem(double time, float deltaTime)
     {
+        //old code
+        /*
         // go through all the objects
         for (size_t io = 0, no = objectList.size(); io != no; ++io)
         {
@@ -349,6 +414,16 @@ struct AvoidanceSystem
                     }
                 }
             }
+            
+        }*/
+
+        for (size_t io = 0, no = objectList.size(); io < no; io += 16)
+        {
+            //__m512 currentX = _mm512_load_ps()
+           //_mm512_min_ps
+        }
+        for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
+        {
         }
     }
 
