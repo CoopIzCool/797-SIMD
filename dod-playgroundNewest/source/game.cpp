@@ -297,7 +297,7 @@ struct AvoidanceSystem
             const PositionComponent& myposition = s_Objects.m_Positions[go];
             const PreviousPositionComponent& prevPosition = s_Objects.m_prevPos[go];
 
-            float minX = (myposition.x > prevPosition.xPrev) ? prevPosition.xPrev : myposition.x;
+            float minX = __min(myposition.x,prevPosition.xPrev);
             minX -= 0.25f;
             float maxX = (myposition.x > prevPosition.xPrev) ? myposition.x : prevPosition.xPrev;
             maxX += 0.25f;
@@ -379,6 +379,7 @@ extern "C" void game_initialize(void)
         s_Objects.m_Positions[go].y = RandomFloat(bounds.yMin, bounds.yMax);
         s_Objects.m_Flags[go] |= Entities::kFlagPosition;
 
+        
         // setup a sprite for it (random sprite index from first 5), and initial white color
         s_Objects.m_Sprites[go].colorR = 1.0f;
         s_Objects.m_Sprites[go].colorG = 1.0f;
