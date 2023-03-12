@@ -257,6 +257,7 @@ struct AvoidanceSystem
 
                     // is our position closer to "thing to avoid" position than the avoid distance?
                     //if (DistanceSq(myposition, avoidposition) < avDistance)
+                    
                     if (avoidMaxX > minX&& avoidMinX < maxX && avoidMaxY > minY&& avoidMinY < maxY)
                     {
                         s_Objects.m_Positions[go].x = RandomFloat(bounds.xMin, bounds.xMax);
@@ -273,18 +274,18 @@ struct AvoidanceSystem
         }
     }
     
-    void ResolveCollision(EntityID id, float deltaTime)
+    void ResolveCollision(EntityID id, float deltaTime,EntityID avoidID)
     {
         PositionComponent& pos = s_Objects.m_Positions[id];
         MoveComponent& move = s_Objects.m_Moves[id];
-
+        MoveComponent& avoidMove = s_Objects.m_Moves[avoidID];
         // flip velocity
         move.velx = -move.velx;
         move.vely = -move.vely;
         
         // move us out of collision, by moving just a tiny bit more than we'd normally move during a frame
-        pos.x += move.velx * deltaTime * 1.1f;
-        pos.y += move.vely * deltaTime * 1.1f;
+        pos.x += (move.velx * deltaTime * 1.6f) + (avoidMove.velx * deltaTime);
+        pos.y += (move.vely * deltaTime * 1.6f) + (avoidMove.vely * deltaTime);
     }
     
     void UpdateSystem(double time, float deltaTime)
@@ -323,16 +324,19 @@ struct AvoidanceSystem
 
                 // is our position closer to "thing to avoid" position than the avoid distance?
                 //if (DistanceSq(myposition, avoidposition) < avDistance)
-                if(avoidMaxX > minX && avoidMinX < maxX && avoidMaxY > minY && avoidMinY < maxY)
+                if (avoidPrevPosition.xPrev != 0 && avoidPrevPosition.yPrev != 0)
                 {
-                    ResolveCollision(go, deltaTime);
-                    
-                    // also make our sprite take the color of the thing we just bumped into
-                    SpriteComponent& avoidSprite = s_Objects.m_Sprites[avoid];
-                    SpriteComponent& mySprite = s_Objects.m_Sprites[go];
-                    mySprite.colorR = avoidSprite.colorR;
-                    mySprite.colorG = avoidSprite.colorG;
-                    mySprite.colorB = avoidSprite.colorB;
+                    if (avoidMaxX > minX&& avoidMinX < maxX && avoidMaxY > minY&& avoidMinY < maxY)
+                    {
+                        ResolveCollision(go, deltaTime,avoid);
+
+                        // also make our sprite take the color of the thing we just bumped into
+                        SpriteComponent& avoidSprite = s_Objects.m_Sprites[avoid];
+                        SpriteComponent& mySprite = s_Objects.m_Sprites[go];
+                        mySprite.colorR = avoidSprite.colorR;
+                        mySprite.colorG = avoidSprite.colorG;
+                        mySprite.colorB = avoidSprite.colorB;
+                    }
                 }
             }
         }
