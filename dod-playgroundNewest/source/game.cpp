@@ -2,8 +2,9 @@
 #include <vector>
 #include <string>
 #include <math.h>
-
+#include <iostream>
 #include <immintrin.h>
+
 
 const int kObjectCount = 100000;
 const int kAvoidCount = 16;
@@ -339,6 +340,7 @@ struct AvoidanceSystem
         */
     }
     
+    /*
     void ResolveCollision(EntityID id, float deltaTime,EntityID avoidID)
     {
         
@@ -352,12 +354,27 @@ struct AvoidanceSystem
         pos.posX[id] += (move.velx * deltaTime * 1.6f) + (avoidMove.velx * deltaTime);
         pos.posY[id] += (move.vely * deltaTime * 1.6f) + (avoidMove.vely * deltaTime);
     }
-    
+    */
+    void ResolveCollision(EntityID id, float deltaTime)
+    {
+
+        MoveComponent& move = s_Objects.m_Moves[id];
+        // flip velocity
+        move.velx = -move.velx;
+        move.vely = -move.vely;
+
+        // move us out of collision, by moving just a tiny bit more than we'd normally move during a frame
+        pos.posX[id] += (move.velx * deltaTime * 1.6f) ;
+        pos.posY[id] += (move.vely * deltaTime * 1.6f);
+    }
+
     void UpdateSystem(double time, float deltaTime)
     {
         //old code
         alignas(32) float buffer = 0.25f;
         __m256 boundaryBuffer = _mm256_set1_ps(buffer);
+        float collisionCheck[kObjectCount];
+        //std::fill(collisionCheck, kObjectCount, 1);
         for (size_t io = 0, no = objectList.size(); io < no; io += 8)
         {
             
@@ -382,8 +399,8 @@ struct AvoidanceSystem
             _mm256_store_ps(boundingBox.maxY + io, maxYBounds);
         }
 
-        __m256 avoidBoundaryBuffer = _mm256_set1_ps(0.5f);
-        for (size_t io = 0, no = avoidList.size(); io < no; io += 16)
+        __m256 avoidBoundaryBuffer = _mm256_set1_ps(1.0f);
+        for (size_t io = 0, no = avoidList.size(); io < no; io += 8)
         {
             EntityID avoid = avoidList[io];
             
@@ -406,9 +423,12 @@ struct AvoidanceSystem
             _mm256_store_ps(boundingBox.maxX + avoid, maxXBounds);
             _mm256_store_ps(boundingBox.minY + avoid, minYBounds);
             _mm256_store_ps(boundingBox.maxY + avoid, maxYBounds);
+
+            
         }
 
         // go through all the objects
+        /*
         for (size_t io = 0, no = objectList.size(); io != no; ++io)
         {
             EntityID go = objectList[io];
@@ -435,24 +455,65 @@ struct AvoidanceSystem
                         mySprite.colorB = avoidSprite.colorB;
                     }
                 }
-                else
-                {
-                    int test;
-                }
+
             }
             
+        }*/
+
+        for (size_t io = 0, no = objectList.size(); io < no; io += 8)
+        {
+            __m256 minXBounds = _mm256_load_ps(boundingBox.minX + io);
+            __m256 maxXBounds = _mm256_load_ps(boundingBox.maxX + io);
+            __m256 minYBounds = _mm256_load_ps(boundingBox.minY + io);
+            __m256 maxYBounds = _mm256_load_ps(boundingBox.maxY + io);
+
+            __m256 previousChecks = _mm256_set1_ps(1.0f);
+            for (size_t ia = 0, no = avoidList.size(); ia < no; ++ia)
+            {
+                EntityID avoid = avoidList[ia];
+                __m256 avoidMinXBounds = _mm256_set1_ps(boundingBox.minX[avoid]);
+                __m256 avoidMaxXBounds = _mm256_set1_ps(boundingBox.maxX[avoid]);
+                __m256 avoidMinYBounds = _mm256_set1_ps(boundingBox.minY[avoid]);
+                __m256 avoidMaxYBounds = _mm256_set1_ps(boundingBox.maxY[avoid]);
+
+                /*
+                __m256 minXBoundsCheck = _mm256_max_ps(minXBounds, avoidMaxXBounds);
+                __m256 maxXBoundsCheck = _mm256_max_ps(maxXBounds, avoidMinXBounds);
+                __m256 minYBoundsCheck = _mm256_max_ps(minYBounds, avoidMaxYBounds);
+                __m256 maxYBoundsCheck = _mm256_max_ps(maxYBounds, avoidMinYBounds);
+
+                __m256 minXMask = _mm256_cmp_ps(avoidMaxXBounds, minXBoundsCheck, _CMP_EQ_OQ);
+                __m256 maxXMask = _mm256_cmp_ps(maxXBounds, maxXBoundsCheck, _CMP_EQ_OQ);
+                __m256 minYMask = _mm256_cmp_ps(avoidMaxYBounds, minYBoundsCheck, _CMP_EQ_OQ);
+                __m256 maxYMask = _mm256_cmp_ps(maxYBounds, maxYBoundsCheck, _CMP_EQ_OQ);
+                */
+
+                
+                __m256 minXMask = _mm256_cmp_ps(avoidMaxXBounds, minXBounds, _CMP_GT_OQ);
+                __m256 maxXMask = _mm256_cmp_ps(maxXBounds, avoidMinXBounds, _CMP_GT_OQ);
+                __m256 minYMask = _mm256_cmp_ps(avoidMaxYBounds, minYBounds, _CMP_GT_OQ);
+                __m256 maxYMask = _mm256_cmp_ps(minYBounds, avoidMinYBounds, _CMP_GT_OQ);
+                
+
+
+
+                __m256 checkingMask = _mm256_and_ps(minXMask, maxXMask);
+                checkingMask = _mm256_and_ps(checkingMask, minYMask);
+                checkingMask = _mm256_and_ps(checkingMask, maxYMask);
+
+                previousChecks = _mm256_and_ps(previousChecks, checkingMask);
+            }
+            _mm256_store_ps(collisionCheck + io, previousChecks);
         }
 
-        /*
-        for (size_t io = 0, no = objectList.size(); io < no; io += 16)
+        for (size_t io = 0, no = objectList.size(); io < no; ++io)
         {
-            //__m512 currentX = _mm512_load_ps()
-           //_mm512_min_ps
+            if (collisionCheck[io] != 0)
+            {
+                ResolveCollision(io, deltaTime);
+            }
         }
-        for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
-        {
-        }
-        */
+
     }
 
     
