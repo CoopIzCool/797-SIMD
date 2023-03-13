@@ -7,7 +7,7 @@
 #include <emmintrin.h>
 #include <immintrin.h>
 
-const int kObjectCount = 1000;
+const int kObjectCount = 100000;
 const int kAvoidCount = 16;
 const int kTotalObjectCount = kObjectCount + kAvoidCount; 
 
@@ -23,8 +23,8 @@ static float RandomFloat(float from, float to) { return RandomFloat01() * (to - 
 // 2D position: just x,y coordinates
 struct PositionComponent
 {
-    alignas(16) float posX[kTotalObjectCount];
-    alignas(16) float posY[kTotalObjectCount];
+    alignas(32) float posX[kTotalObjectCount];
+    alignas(32) float posY[kTotalObjectCount];
 
 };
 
@@ -46,16 +46,16 @@ struct WorldBoundsComponent
 
 struct PreviousPositionComponent
 {
-    alignas(16) float prevX[kTotalObjectCount];
-    alignas(16) float prevY[kTotalObjectCount];
+    alignas(32) float prevX[kTotalObjectCount];
+    alignas(32) float prevY[kTotalObjectCount];
 };
 
 struct AABBComponent
 {
-    alignas(16) float minX[kTotalObjectCount];
-    alignas(16) float minY[kTotalObjectCount];
-    alignas(16) float maxX[kTotalObjectCount];
-    alignas(16) float maxY[kTotalObjectCount];
+    alignas(32) float minX[kTotalObjectCount];
+    alignas(32) float minY[kTotalObjectCount];
+    alignas(32) float maxX[kTotalObjectCount];
+    alignas(32) float maxY[kTotalObjectCount];
 
 };
 
@@ -148,6 +148,8 @@ struct MoveSystem
 {
     EntityID boundsID; // ID if object with world bounds
     std::vector<EntityID> entities; // IDs of objects that should be moved
+    PositionComponent& pos = s_Objects.m_Positions;
+    PreviousPositionComponent& prevPos = s_Objects.m_prevPos;
 
     void AddObjectToSystem(EntityID id)
     {
@@ -162,15 +164,12 @@ struct MoveSystem
     void UpdateSystem(double time, float deltaTime)
     {
         const WorldBoundsComponent& bounds = s_Objects.m_WorldBounds[boundsID];
-        PositionComponent& pos = s_Objects.m_Positions;
-        PreviousPositionComponent& prevPos = s_Objects.m_prevPos;
+
         // go through all the objects
         for (size_t io = 0, no = entities.size(); io != no; ++io)
         {
             
             MoveComponent& move = s_Objects.m_Moves[io];
-            
-
 
             //set previous position for AABB Collsiion
             prevPos.prevX[io] = pos.posX[io];
@@ -226,6 +225,7 @@ struct AvoidanceSystem
     //position component references
     PositionComponent& pos = s_Objects.m_Positions;
     PreviousPositionComponent& prevPosition = s_Objects.m_prevPos;
+    AABBComponent& boundingBox = s_Objects.m_AABB;
 
     void AddAvoidThisObjectToSystem(EntityID id, float distance)
     {
@@ -266,8 +266,8 @@ struct AvoidanceSystem
 
                     float avoidMinX = pos.posX[avoid] - 1.0;
                     float avoidMaxX = pos.posX[avoid] + 1.0;
-                    float avoidMinY = pos.posX[avoid] - 1.0;
-                    float avoidMaxY = pos.posX[avoid] + 1.0;
+                    float avoidMinY = pos.posY[avoid] - 1.0;
+                    float avoidMaxY = pos.posY[avoid] + 1.0;
 
                     // is our position closer to "thing to avoid" position than the avoid distance?
                     //if (DistanceSq(myposition, avoidposition) < avDistance)
@@ -358,42 +358,74 @@ struct AvoidanceSystem
     void UpdateSystem(double time, float deltaTime)
     {
         //old code
-        
+        alignas(32) float buffer = 0.25f;
+        __m512 boundaryBuffer = _mm512_set1_ps(buffer);
+        for (size_t io = 0, no = objectList.size(); io < no; io += 16)
+        {
+            
+            __m512 currentX = _mm512_load_ps(pos.posX + io);
+            __m512 currentY = _mm512_load_ps(pos.posY + io);
+            __m512 prevX = _mm512_load_ps(prevPosition.prevX + io);
+            __m512 prevY = _mm512_load_ps(prevPosition.prevY + io);
+
+            __m512 minXBounds = _mm512_min_ps(currentX, prevX);
+            __m512 maxXBounds = _mm512_max_ps(currentX, prevX);
+            __m512 minYBounds = _mm512_min_ps(currentY, prevY);
+            __m512 maxYBounds = _mm512_max_ps(currentY, prevY);
+
+            minXBounds = _mm512_sub_ps(minXBounds, boundaryBuffer);
+            maxXBounds = _mm512_add_ps(maxXBounds, boundaryBuffer);
+            minYBounds = _mm512_sub_ps(minYBounds, boundaryBuffer);
+            maxYBounds = _mm512_add_ps(maxYBounds, boundaryBuffer);
+
+            _mm512_store_ps(boundingBox.minX + io, minXBounds);
+            _mm512_store_ps(boundingBox.maxX + io, maxXBounds);
+            _mm512_store_ps(boundingBox.minY + io, minYBounds);
+            _mm512_store_ps(boundingBox.maxY + io, maxYBounds);
+        }
+
+        __m512 avoidBoundaryBuffer = _mm512_set1_ps(0.5f);
+        for (size_t io = 0, no = avoidList.size(); io < no; io += 16)
+        {
+            EntityID avoid = avoidList[io];
+            
+            __m512 currentX = _mm512_load_ps(pos.posX  + avoid);
+            __m512 currentY = _mm512_load_ps(pos.posY  + avoid);
+            __m512 prevX = _mm512_load_ps(prevPosition.prevX + avoid);
+            __m512 prevY = _mm512_load_ps(prevPosition.prevY + avoid);
+
+            __m512 minXBounds = _mm512_min_ps(currentX, prevX);
+            __m512 maxXBounds = _mm512_max_ps(currentX, prevX);
+            __m512 minYBounds = _mm512_min_ps(currentY, prevY);
+            __m512 maxYBounds = _mm512_max_ps(currentY, prevY);
+
+            minXBounds = _mm512_sub_ps(minXBounds, avoidBoundaryBuffer);
+            maxXBounds = _mm512_add_ps(maxXBounds, avoidBoundaryBuffer);
+            minYBounds = _mm512_sub_ps(minYBounds, avoidBoundaryBuffer);
+            maxYBounds = _mm512_add_ps(maxYBounds, avoidBoundaryBuffer);
+
+            _mm512_store_ps(boundingBox.minX + avoid, minXBounds);
+            _mm512_store_ps(boundingBox.maxX + avoid, maxXBounds);
+            _mm512_store_ps(boundingBox.minY + avoid, minYBounds);
+            _mm512_store_ps(boundingBox.maxY + avoid, maxYBounds);
+        }
+
         // go through all the objects
         for (size_t io = 0, no = objectList.size(); io != no; ++io)
         {
             EntityID go = objectList[io];
             
 
-            float minX = (pos.posX[go] > prevPosition.prevX[go]) ? prevPosition.prevX[go] : pos.posX[go];
-            minX -= 0.25f;
-            float maxX = (pos.posX[go] > prevPosition.prevX[go]) ? pos.posX[go] : prevPosition.prevX[go];
-            maxX += 0.25f;
-            float minY = (pos.posY[go] > prevPosition.prevY[go]) ? prevPosition.prevY[go] : pos.posY[go];
-            minY -= 0.25f;
-            float maxY = (pos.posY[go] > prevPosition.prevY[go]) ? pos.posY[go] : prevPosition.prevY[go];
-            maxY += 0.25f;
             // check each thing in avoid list
             for (size_t ia = 0, na = avoidList.size(); ia != na; ++ia)
             {
-                float avDistance = avoidDistanceList[ia];
                 EntityID avoid = avoidList[ia];
-
-
-                float avoidMinX = (pos.posX[avoid] > prevPosition.prevX[avoid]) ? prevPosition.prevX[avoid] : pos.posX[avoid];
-                avoidMinX -= 0.55f;
-                float avoidMaxX = (pos.posX[avoid] > prevPosition.prevX[avoid]) ? pos.posX[avoid] : prevPosition.prevX[avoid];
-                avoidMaxX += 0.55f;
-                float avoidMinY = (pos.posY[avoid] > prevPosition.prevY[avoid]) ? prevPosition.prevY[avoid] : pos.posY[avoid];
-                avoidMinY -= 0.55f;
-                float avoidMaxY = (pos.posY[avoid] > prevPosition.prevY[avoid]) ? pos.posY[avoid] : prevPosition.prevY[avoid];
-                avoidMaxY += 0.55f;
 
                 // is our position closer to "thing to avoid" position than the avoid distance?
                 //if (DistanceSq(myposition, avoidposition) < avDistance)
-                if (prevPosition.prevX[avoid] != 0 && prevPosition.prevY[avoid] != 0)
+                if (deltaTime != 0)
                 {
-                    if (avoidMaxX > minX&& avoidMinX < maxX && avoidMaxY > minY&& avoidMinY < maxY)
+                    if (boundingBox.maxX[avoid] > boundingBox.minX[go] && boundingBox.minX[avoid] < boundingBox.maxX[go] && boundingBox.maxY[avoid] >  boundingBox.minY[go] && boundingBox.minY[avoid] < boundingBox.maxY[go])
                     {
                         ResolveCollision(go, deltaTime,avoid);
 
