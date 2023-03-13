@@ -382,8 +382,8 @@ struct AvoidanceSystem
             _mm256_store_ps(boundingBox.maxY + io, maxYBounds);
         }
 
-        __m256 avoidBoundaryBuffer = _mm256_set1_ps(0.5f);
-        for (size_t io = 0, no = avoidList.size(); io < no; io += 16)
+        __m256 avoidBoundaryBuffer = _mm256_set1_ps(1.0f);
+        for (size_t io = 0, no = avoidList.size(); io < no; io += 8)
         {
             EntityID avoid = avoidList[io];
             
