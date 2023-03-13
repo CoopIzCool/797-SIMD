@@ -2,9 +2,7 @@
 #include <vector>
 #include <string>
 #include <math.h>
-#include <assert.h>
-#include <cstdint>
-#include <emmintrin.h>
+
 #include <immintrin.h>
 
 const int kObjectCount = 100000;
@@ -359,55 +357,55 @@ struct AvoidanceSystem
     {
         //old code
         alignas(32) float buffer = 0.25f;
-        __m512 boundaryBuffer = _mm512_set1_ps(buffer);
-        for (size_t io = 0, no = objectList.size(); io < no; io += 16)
+        __m256 boundaryBuffer = _mm256_set1_ps(buffer);
+        for (size_t io = 0, no = objectList.size(); io < no; io += 8)
         {
             
-            __m512 currentX = _mm512_load_ps(pos.posX + io);
-            __m512 currentY = _mm512_load_ps(pos.posY + io);
-            __m512 prevX = _mm512_load_ps(prevPosition.prevX + io);
-            __m512 prevY = _mm512_load_ps(prevPosition.prevY + io);
+            __m256 currentX = _mm256_load_ps(pos.posX + io);
+            __m256 currentY = _mm256_load_ps(pos.posY + io);
+            __m256 prevX = _mm256_load_ps(prevPosition.prevX + io);
+            __m256 prevY = _mm256_load_ps(prevPosition.prevY + io);
 
-            __m512 minXBounds = _mm512_min_ps(currentX, prevX);
-            __m512 maxXBounds = _mm512_max_ps(currentX, prevX);
-            __m512 minYBounds = _mm512_min_ps(currentY, prevY);
-            __m512 maxYBounds = _mm512_max_ps(currentY, prevY);
+            __m256 minXBounds = _mm256_min_ps(currentX, prevX);
+            __m256 maxXBounds = _mm256_max_ps(currentX, prevX);
+            __m256 minYBounds = _mm256_min_ps(currentY, prevY);
+            __m256 maxYBounds = _mm256_max_ps(currentY, prevY);
 
-            minXBounds = _mm512_sub_ps(minXBounds, boundaryBuffer);
-            maxXBounds = _mm512_add_ps(maxXBounds, boundaryBuffer);
-            minYBounds = _mm512_sub_ps(minYBounds, boundaryBuffer);
-            maxYBounds = _mm512_add_ps(maxYBounds, boundaryBuffer);
+            //minXBounds = _mm512_sub_ps(minXBounds, boundaryBuffer);
+            //maxXBounds = _mm512_add_ps(maxXBounds, boundaryBuffer);
+            //minYBounds = _mm512_sub_ps(minYBounds, boundaryBuffer);
+            //maxYBounds = _mm512_add_ps(maxYBounds, boundaryBuffer);
 
-            _mm512_store_ps(boundingBox.minX + io, minXBounds);
-            _mm512_store_ps(boundingBox.maxX + io, maxXBounds);
-            _mm512_store_ps(boundingBox.minY + io, minYBounds);
-            _mm512_store_ps(boundingBox.maxY + io, maxYBounds);
+            _mm256_store_ps(boundingBox.minX + io, minXBounds);
+            _mm256_store_ps(boundingBox.maxX + io, maxXBounds);
+            _mm256_store_ps(boundingBox.minY + io, minYBounds);
+            _mm256_store_ps(boundingBox.maxY + io, maxYBounds);
         }
 
-        __m512 avoidBoundaryBuffer = _mm512_set1_ps(0.5f);
+        __m256 avoidBoundaryBuffer = _mm256_set1_ps(0.5f);
         for (size_t io = 0, no = avoidList.size(); io < no; io += 16)
         {
             EntityID avoid = avoidList[io];
             
-            __m512 currentX = _mm512_load_ps(pos.posX  + avoid);
-            __m512 currentY = _mm512_load_ps(pos.posY  + avoid);
-            __m512 prevX = _mm512_load_ps(prevPosition.prevX + avoid);
-            __m512 prevY = _mm512_load_ps(prevPosition.prevY + avoid);
+            __m256 currentX = _mm256_load_ps(pos.posX  + avoid);
+            __m256 currentY = _mm256_load_ps(pos.posY  + avoid);
+            __m256 prevX = _mm256_load_ps(prevPosition.prevX + avoid);
+            __m256 prevY = _mm256_load_ps(prevPosition.prevY + avoid);
 
-            __m512 minXBounds = _mm512_min_ps(currentX, prevX);
-            __m512 maxXBounds = _mm512_max_ps(currentX, prevX);
-            __m512 minYBounds = _mm512_min_ps(currentY, prevY);
-            __m512 maxYBounds = _mm512_max_ps(currentY, prevY);
+            __m256 minXBounds = _mm256_min_ps(currentX, prevX);
+            __m256 maxXBounds = _mm256_max_ps(currentX, prevX);
+            __m256 minYBounds = _mm256_min_ps(currentY, prevY);
+            __m256 maxYBounds = _mm256_max_ps(currentY, prevY);
 
-            minXBounds = _mm512_sub_ps(minXBounds, avoidBoundaryBuffer);
-            maxXBounds = _mm512_add_ps(maxXBounds, avoidBoundaryBuffer);
-            minYBounds = _mm512_sub_ps(minYBounds, avoidBoundaryBuffer);
-            maxYBounds = _mm512_add_ps(maxYBounds, avoidBoundaryBuffer);
+            minXBounds = _mm256_sub_ps(minXBounds, avoidBoundaryBuffer);
+            maxXBounds = _mm256_add_ps(maxXBounds, avoidBoundaryBuffer);
+            minYBounds = _mm256_sub_ps(minYBounds, avoidBoundaryBuffer);
+            maxYBounds = _mm256_add_ps(maxYBounds, avoidBoundaryBuffer);
 
-            _mm512_store_ps(boundingBox.minX + avoid, minXBounds);
-            _mm512_store_ps(boundingBox.maxX + avoid, maxXBounds);
-            _mm512_store_ps(boundingBox.minY + avoid, minYBounds);
-            _mm512_store_ps(boundingBox.maxY + avoid, maxYBounds);
+            _mm256_store_ps(boundingBox.minX + avoid, minXBounds);
+            _mm256_store_ps(boundingBox.maxX + avoid, maxXBounds);
+            _mm256_store_ps(boundingBox.minY + avoid, minYBounds);
+            _mm256_store_ps(boundingBox.maxY + avoid, maxYBounds);
         }
 
         // go through all the objects
